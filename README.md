@@ -87,7 +87,8 @@ This is a simple command-line tool written in Python for pinging servers, displa
     From the Termux terminal, run the script:
 
     ```bash
-    ./pinger.py
+    python3 pinger.py
+
     ```
 
 2.  **Follow the Menu:**
