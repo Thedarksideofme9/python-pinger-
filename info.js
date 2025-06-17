@@ -1,7 +1,7 @@
 {
   "program": {
     "type": "javascript",
-    "version": "v1.1",
+    "version": "v1.1beta2",
     "name": "Randompinger"
   }
 }
