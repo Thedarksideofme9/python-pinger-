@@ -51,12 +51,13 @@ COLOR_PALETTES = {
         "CYAN": '\033[36m'
     },
     "pastel": {
-        "RED": '\033[95m',
-        "GREEN": '\033[96m',
-        "YELLOW": '\033[93m',
-        "BLUE": '\033[94m',
-        MAGENTA = '\033[91m',
-        CYAN = '\033[92m'
+    "RED": '\033[95m',
+    "GREEN": '\033[96m',
+    "YELLOW": '\033[93m',
+    "BLUE": '\033[94m',
+    "MAGENTA": '\033[91m',
+    "CYAN": '\033[92m'
+    }
     }
 }
 
