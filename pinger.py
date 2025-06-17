@@ -59,7 +59,7 @@ COLOR_PALETTES = {
     "CYAN": '\033[92m'
     }
     }
-}
+
 
 # ASCII art for "Random Pinger" in large red text
 ASCII_ART = f"""{COLOR_PALETTES["default"]["RED"]}
