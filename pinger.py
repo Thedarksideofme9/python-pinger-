@@ -13,6 +13,7 @@ import json  # For saving settings
 import select
 import textwrap
 import traceback
+import argparse # for command line arguments
 
 # ANSI color codes
 RESET = '\033[0m'
@@ -85,6 +86,9 @@ DEFAULT_SETTINGS = {
     "color_theme": "default"  # Add color theme setting
 }
 SETTINGS_FILE = "pinger_settings.json"  # File to save settings
+
+# Version Information
+VERSION = "V1.2"
 
 
 # Load Settings Function
@@ -264,15 +268,17 @@ def display_settings_menu():
     print("  1. Ping Connection Tweaks")
     print("  2. Show Device Specs")
     print("  3. Change Color Theme")  # Added color theme setting
-    print("  4. Wifi Speed Test")  # added speed test
-    print("  5. Back to Main Menu")
+    print("  4. Wi-Fi Speed Test")  # add speed test
+    print("  5. Version Info")
+    print("  6. Resolve Hostname")  # added resolve hostname
+    print("  7. Back to Main Menu")
 
 def get_settings_menu_choice():
     """Gets the user's choice from the settings menu."""
     while True:
         display_settings_menu()
         choice = input("> ")
-        if choice in ("1", "2", "3", "4", "5"): #added 4
+        if choice in ("1", "2", "3", "4", "5", "6", "7"):  # added 5
             return choice
         else:
             print("Invalid choice. Please try again.")
@@ -368,7 +374,7 @@ def show_device_specs():
         time.sleep(0.5)  # Update every 0.5 seconds
 
         # Check for user input 'q' to quit
-        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:  # Check if there is input in stdin without blocking
+        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:  # Check if sys.stdin has data to read
             if sys.stdin.readline().strip().lower() == 'q':
                 print("\nReturning to Settings Menu...")
                 break  # Exit the loop
@@ -449,6 +455,20 @@ def perform_speed_test():
     except Exception as e:
         print(f"{RED}An unexpected error occurred: {e}, {traceback.format_exc()}")
 
+def display_version_info():
+    """Displays the version information."""
+    print(f"{YELLOW}\n--- Version Information ---{RESET}")
+    print(f"  Pinger Version: {VERSION}{RESET}\n")
+
+def resolve_hostname():
+        """Prompts the user for a hostname and attempts to resolve it to an IP address."""
+        hostname = input("Enter hostname to resolve: ")
+        try:
+            ip_address = socket.gethostbyname(hostname)
+            print(f"{GREEN}Hostname '{hostname}' resolves to: {ip_address}{RESET}")
+        except socket.gaierror:
+            print(f"{RED}Could not resolve hostname '{hostname}'.{RESET}")
+
 def main():
     """Main function to handle menu and ping operations."""
 
@@ -467,7 +487,6 @@ def main():
                     print(f"{RED}Ping to {server} failed.{RESET}")
             else:
                 print("Returning to main menu.")
-
         elif choice == "2":  # Search for a Custom Hostname/IP
             hostname = input("Enter hostname/IP to search: ")
             avg_ping_time = ping(hostname, count=SETTINGS["ping_count"])  # Use settings ping count
@@ -475,15 +494,12 @@ def main():
                 print(f"{GREEN}Ping to {hostname} successful. Avg Ping Time: {avg_ping_time:.2f} ms{RESET}")
             else:
                 print(f"{RED}Ping to {hostname} failed.{RESET}")
-
         elif choice == "3":  # Randomly Ping a Server
             random_ping()
-
         elif choice == "4":  # List Available Servers with Status
             print(f"{MAGENTA}\nAvailable Servers with Status:{RESET}")
             for hostname in SERVERS.values():
                 display_server_status(hostname)
-
         elif choice == "5":  # Settings
             settings_choice = get_settings_menu_choice()
             if settings_choice == "1":  # Ping Connection Tweaks
@@ -494,7 +510,11 @@ def main():
                 get_color_theme_menu_choice()
             elif settings_choice == "4":  # Run Wifi test
                 perform_speed_test()  # Run Speedtest
-            elif settings_choice == "5":  # Back to main menu
+            elif settings_choice == "5":  # show version
+                display_version_info() #Shows versions
+            elif settings_choice == "6": #resolve
+                resolve_hostname()
+            elif settings_choice == "7":  # Back to main menu
                 pass  # Just return to the main loop
 
         elif choice == "6":  # Exit
@@ -505,7 +525,7 @@ if __name__ == "__main__":
     """
     Needs these installed
     pip install requests
-    pip install speedtest-cli
+    pip install speedtest
     """
     import select
     import traceback
