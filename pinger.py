@@ -14,6 +14,8 @@ import select
 import textwrap
 import traceback
 import argparse # for command line arguments
+import ssl
+from datetime import datetime
 
 # ANSI color codes
 RESET = '\033[0m'
@@ -43,23 +45,22 @@ COLOR_PALETTES = {
         "CYAN": '\033[36m'
     },
     "light": {
-        "RED": '\033[31m',
-        "GREEN": '\033[32m',
-        "YELLOW": '\033[33m',
-        "BLUE": '\033[34m',
-        "MAGENTA": '\033[35m',
-        "CYAN": '\033[36m'
+        "RED": '\033[37m',  # Adjusted for better visibility on light backgrounds
+        "GREEN": '\033[92m', #changed from 32
+        "YELLOW": '\033[93m', # changed from 33
+        "BLUE": '\033[94m',#changed from 34
+        "MAGENTA": '\033[95m',#changed from 35
+        "CYAN": '\033[96m' #changed from 36
     },
     "pastel": {
-    "RED": '\033[95m',
-    "GREEN": '\033[96m',
-    "YELLOW": '\033[93m',
-    "BLUE": '\033[94m',
-    "MAGENTA": '\033[91m',
-    "CYAN": '\033[92m'
+        "RED": '\033[95m',
+        "GREEN": '\033[96m',
+        "YELLOW": '\033[93m',
+        "BLUE": '\033[94m',
+        "MAGENTA": '\033[91m',
+        "CYAN": '\033[92m'
     }
-    }
-
+}
 
 # ASCII art for "Random Pinger" in large red text
 ASCII_ART = f"""{COLOR_PALETTES["default"]["RED"]}
@@ -193,10 +194,39 @@ def ping(hostname, count=4):
         print(f"Ping failed: {e}")
         return None
 
+def get_certificate_info(hostname):
+    """Retrieves certificate information from a server."""
+    context = ssl.create_default_context()
+    try:
+        with socket.create_connection((hostname, 443), timeout=5) as sock:  #HTTPS port
+            with context.wrap_socket(sock, server_hostname=hostname) as ssocket:
+                cert = ssocket.getpeercert()
+                return cert
+    except socket.gaierror:
+        print(f"{RED}Could not resolve hostname '{hostname}'.{RESET}")
+        return None
+    except (socket.timeout, ssl.SSLError, OSError) as e:
+        print(f"{RED}Failed to retrieve certificate for {hostname}: {e}{RESET}")
+        return None
+
+def calculate_certificate_lifetime(cert):
+    """Calculates the remaining lifetime of a certificate."""
+    if not cert:
+        return None
+
+    try:
+        not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
+        remaining_time = not_after - datetime.utcnow()
+        return remaining_time
+    except (ValueError, KeyError) as e:
+        print(f"{RED}Error calculating certificate lifetime: {e}{RESET}")
+        return None
+
 def display_server_status(hostname):
-    """Displays the status of a given server with color, country, and ping time."""
+    """Displays the status of a given server with color, country, ping time, and certificate info."""
     country = get_country(hostname)
     avg_ping_time = ping(hostname, count=1)  # Get the ping time
+    cert = get_certificate_info(hostname)
 
     if avg_ping_time is not None:
         status_color = GREEN
@@ -206,6 +236,15 @@ def display_server_status(hostname):
         status_text = "Unavailable"
 
     print(f"  - {hostname} ({country}) - {status_color}{status_text}{RESET}")
+
+    if cert:
+        lifetime = calculate_certificate_lifetime(cert)
+        if lifetime:
+            print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
+        else:
+            print(f"    {YELLOW}Could not determine certificate lifetime.{RESET}")
+    else:
+        print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
 
 def display_main_menu():
     """Displays the main menu with options."""
@@ -462,13 +501,13 @@ def display_version_info():
     print(f"  Pinger Version: {VERSION}{RESET}\n")
 
 def resolve_hostname():
-        """Prompts the user for a hostname and attempts to resolve it to an IP address."""
-        hostname = input("Enter hostname to resolve: ")
-        try:
-            ip_address = socket.gethostbyname(hostname)
-            print(f"{GREEN}Hostname '{hostname}' resolves to: {ip_address}{RESET}")
-        except socket.gaierror:
-            print(f"{RED}Could not resolve hostname '{hostname}'.{RESET}")
+    """Prompts the user for a hostname and attempts to resolve it to an IP address."""
+    hostname = input("Enter hostname to resolve: ")
+    try:
+        ip_address = socket.gethostbyname(hostname)
+        print(f"{GREEN}Hostname '{hostname}' resolves to: {ip_address}{RESET}")
+    except socket.gaierror:
+        print(f"{RED}Could not resolve hostname '{hostname}'.{RESET}")
 
 def main():
     """Main function to handle menu and ping operations."""
@@ -486,6 +525,18 @@ def main():
                     print(f"{GREEN}Ping to {server} successful. Avg Ping Time: {avg_ping_time:.2f} ms{RESET}")
                 else:
                     print(f"{RED}Ping to {server} failed.{RESET}")
+
+                # Display certificate information
+                cert = get_certificate_info(server)
+                if cert:
+                    lifetime = calculate_certificate_lifetime(cert)
+                    if lifetime:
+                        print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
+                    else:
+                        print(f"    {YELLOW}Could not determine certificate lifetime.{RESET}")
+                else:
+                    print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
+
             else:
                 print("Returning to main menu.")
         elif choice == "2":  # Search for a Custom Hostname/IP
@@ -495,6 +546,18 @@ def main():
                 print(f"{GREEN}Ping to {hostname} successful. Avg Ping Time: {avg_ping_time:.2f} ms{RESET}")
             else:
                 print(f"{RED}Ping to {hostname} failed.{RESET}")
+
+            # Display certificate information
+            cert = get_certificate_info(hostname)
+            if cert:
+                lifetime = calculate_certificate_lifetime(cert)
+                if lifetime:
+                    print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
+                else:
+                    print(f"    {YELLOW}Could not determine certificate lifetime.{RESET}")
+            else:
+                print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
+
         elif choice == "3":  # Randomly Ping a Server
             random_ping()
         elif choice == "4":  # List Available Servers with Status
