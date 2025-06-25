@@ -13,7 +13,7 @@ import json  # For saving settings
 import select
 import textwrap
 import traceback
-import argparse # for command line arguments
+import argparse  # for command line arguments
 import ssl
 from datetime import datetime
 
@@ -46,11 +46,11 @@ COLOR_PALETTES = {
     },
     "light": {
         "RED": '\033[37m',  # Adjusted for better visibility on light backgrounds
-        "GREEN": '\033[92m', #changed from 32
-        "YELLOW": '\033[93m', # changed from 33
-        "BLUE": '\033[94m',#changed from 34
-        "MAGENTA": '\033[95m',#changed from 35
-        "CYAN": '\033[96m' #changed from 36
+        "GREEN": '\033[92m',  # changed from 32
+        "YELLOW": '\033[93m',  # changed from 33
+        "BLUE": '\033[94m',  # changed from 34
+        "MAGENTA": '\033[95m',  # changed from 35
+        "CYAN": '\033[96m'  # changed from 36
     },
     "pastel": {
         "RED": '\033[95m',
@@ -90,7 +90,7 @@ DEFAULT_SETTINGS = {
 SETTINGS_FILE = "pinger_settings.json"  # File to save settings
 
 # Version Information
-VERSION = "V1.2"
+VERSION = "V1.3"  #Increment version number
 
 
 # Load Settings Function
@@ -135,10 +135,12 @@ def apply_color_theme(theme):
         print(f"{RED}Invalid theme: {theme}. Using default.{RESET}")
         apply_color_theme("default")
 
+
 # Load Settings at Startup
 SETTINGS = load_settings()
 PING_COUNT = SETTINGS["ping_count"]  # LOAD GLOBAL PING COUNT
 apply_color_theme(SETTINGS["color_theme"])  # Apply the color theme to the current color codes
+
 
 def get_country(hostname):
     """Gets the country of a hostname using the ipinfo.io API."""
@@ -151,6 +153,7 @@ def get_country(hostname):
             return "Unknown"
     except (socket.gaierror, requests.exceptions.RequestException):
         return "Unknown"
+
 
 def ping(hostname, count=4):
     """
@@ -194,11 +197,12 @@ def ping(hostname, count=4):
         print(f"Ping failed: {e}")
         return None
 
+
 def get_certificate_info(hostname):
     """Retrieves certificate information from a server."""
     context = ssl.create_default_context()
     try:
-        with socket.create_connection((hostname, 443), timeout=5) as sock:  #HTTPS port
+        with socket.create_connection((hostname, 443), timeout=5) as sock:  # HTTPS port
             with context.wrap_socket(sock, server_hostname=hostname) as ssocket:
                 cert = ssocket.getpeercert()
                 return cert
@@ -209,6 +213,7 @@ def get_certificate_info(hostname):
         print(f"{RED}Failed to retrieve certificate for {hostname}: {e}{RESET}")
         return None
 
+
 def calculate_certificate_lifetime(cert):
     """Calculates the remaining lifetime of a certificate."""
     if not cert:
@@ -216,11 +221,25 @@ def calculate_certificate_lifetime(cert):
 
     try:
         not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
-        remaining_time = not_after - datetime.utcnow()
+        remaining_time = not_after - datetime.datetime.now(datetime.timezone.utc)
         return remaining_time
     except (ValueError, KeyError) as e:
         print(f"{RED}Error calculating certificate lifetime: {e}{RESET}")
         return None
+
+def get_certificate_name(cert):
+    """Extracts the certificate name (commonName) from the certificate."""
+    if not cert:
+        return "Unknown"
+    try:
+        for entry in cert['subject']:
+            for attribute in entry:
+                if attribute[0] == 'commonName':
+                    return attribute[1]
+        return "Unknown"
+    except KeyError:
+        return "Unknown"
+
 
 def display_server_status(hostname):
     """Displays the status of a given server with color, country, ping time, and certificate info."""
@@ -239,12 +258,17 @@ def display_server_status(hostname):
 
     if cert:
         lifetime = calculate_certificate_lifetime(cert)
+        cert_name = get_certificate_name(cert) #Get the name
+
+        print(f"    {GREEN}Certificate Name: {cert_name}{RESET}")
+
         if lifetime:
             print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
         else:
             print(f"    {YELLOW}Could not determine certificate lifetime.{RESET}")
     else:
         print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
+
 
 def display_main_menu():
     """Displays the main menu with options."""
@@ -256,6 +280,7 @@ def display_main_menu():
     print("  5. Settings")
     print("  6. Exit")
 
+
 def get_main_menu_choice():
     """Gets the user's choice from the main menu."""
     while True:
@@ -266,12 +291,14 @@ def get_main_menu_choice():
         else:
             print("Invalid choice. Please try again.")
 
+
 def display_server_menu():
     """Displays the server menu."""
     print(f"{CYAN}\nAvailable Servers:{RESET}")
     for i, (key, value) in enumerate(SERVERS.items()):
-        print(f"  {i+1}. {key} ({value})")
+        print(f"  {i + 1}. {key} ({value})")
     print("\nEnter the number of the server you want to ping, or '0' to go back:")
+
 
 def get_server_menu_choice():
     """Gets the user's choice from the server menu."""
@@ -289,6 +316,7 @@ def get_server_menu_choice():
         except ValueError:
             print("Invalid input. Please enter a number.")
 
+
 def random_ping():
     """Randomly pings a server from the list."""
     hostname = random.choice(list(SERVERS.values()))
@@ -302,6 +330,18 @@ def random_ping():
     else:
         print(f"{RED}Ping to {hostname} failed.{RESET}")
 
+def analyze_http_headers(hostname):
+    """Retrieves and analyzes HTTP headers from a given hostname."""
+    try:
+        response = requests.get(f"http://{hostname}", timeout=5, allow_redirects=True)
+        headers = response.headers
+        print(f"{GREEN}\n--- HTTP Headers for {hostname} ---{RESET}")
+        for key, value in headers.items():
+            print(f"  {key}: {value}")
+        print(f"  Status Code: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"{RED}Failed to retrieve HTTP headers for {hostname}: {e}{RESET}")
+
 def display_settings_menu():
     """Displays the settings menu."""
     print(f"{MAGENTA}\nSettings Menu:{RESET}")
@@ -311,17 +351,20 @@ def display_settings_menu():
     print("  4. Wi-Fi Speed Test")  # add speed test
     print("  5. Version Info")
     print("  6. Resolve Hostname")  # added resolve hostname
-    print("  7. Back to Main Menu")
+    print("  7. Analyze HTTP Headers")  #New Analysis
+    print("  8. Back to Main Menu")
+
 
 def get_settings_menu_choice():
     """Gets the user's choice from the settings menu."""
     while True:
         display_settings_menu()
         choice = input("> ")
-        if choice in ("1", "2", "3", "4", "5", "6", "7"):  # added 5
+        if choice in ("1", "2", "3", "4", "5", "6", "7", "8"):  # added 5
             return choice
         else:
             print("Invalid choice. Please try again.")
+
 
 def display_ping_tweaks_menu():
     """Displays the Ping Tweaks menu."""
@@ -329,6 +372,7 @@ def display_ping_tweaks_menu():
     print(f"  Current Ping Count: {SETTINGS['ping_count']}")
     print("  1. Change Ping Count")
     print("  2. Back to Settings Menu")
+
 
 def get_ping_tweaks_menu_choice():
     """Gets the user's choice from the ping tweaks menu."""
@@ -353,6 +397,7 @@ def get_ping_tweaks_menu_choice():
             return  # Back to Settings Menu
         else:
             print("Invalid choice. Please try again.")
+
 
 def show_device_specs():
     """Displays device specifications, live RAM and CPU usage."""
@@ -420,15 +465,18 @@ def show_device_specs():
                 break  # Exit the loop
         time.sleep(0.5)  # Give time for stdin to fill up to be read
 
+
 def display_color_theme_menu():
     """Displays the color theme menu."""
     print(f"{CYAN}\nColor Theme Settings:{RESET}")
     print(f"  Current Theme: {SETTINGS['color_theme']}")
     themes = list(COLOR_PALETTES.keys())
     for i, theme in enumerate(themes):
-        print(f"  {i+1}. {theme.capitalize()} Theme")  #More Dynamic theme listing
-    print(f"  {len(themes)+1}. Back to Settings Menu")  #Back option
-    print("\nEnter the number of the theme you want to use:") #Prompt change
+        print(f"  {i + 1}. {theme.capitalize()} Theme")  # More Dynamic theme listing
+    print(f"  {len(themes) + 1}. Custom Theme (Advanced)")
+    print(f"  {len(themes) + 2}. Back to Settings Menu")  # Back option
+    print("\nEnter the number of the theme you want to use:")  # Prompt change
+
 
 def get_color_theme_menu_choice():
     """Gets the user's choice from the color theme menu."""
@@ -438,21 +486,55 @@ def get_color_theme_menu_choice():
         choice = input("> ")
         themes = list(COLOR_PALETTES.keys())
 
-        if choice.isdigit(): #Only accept int, prevent errors
-            choice_num = int(choice) #Convert to int
-            if 1 <= choice_num <= len(themes): #Make sure selection is within the list
-                selected_theme = themes[choice_num-1] #Minus one as start at 1
+        if choice.isdigit():  # Only accept int, prevent errors
+            choice_num = int(choice)  # Convert to int
+            if 1 <= choice_num <= len(themes):  # Make sure selection is within the list
+                selected_theme = themes[choice_num - 1]  # Minus one as start at 1
                 SETTINGS["color_theme"] = selected_theme
                 apply_color_theme(SETTINGS["color_theme"])  # Apply theme immediately
                 save_settings(SETTINGS)  # Save the updated settings
-                print(f"{GREEN}Color theme set to {selected_theme.capitalize()}.{RESET}") #Feedback
-                return #Exit the loop
-            elif choice_num == len(themes)+1: #+1 is "back"
+                print(f"{GREEN}Color theme set to {selected_theme.capitalize()}.{RESET}")  # Feedback
+                return  # Exit the loop
+            elif choice_num == len(themes) + 1:  # Custom Theme
+                set_custom_theme()  # Call the custom theme function
+                return  # Return to settings menu
+            elif choice_num == len(themes) + 2:  # +2 is "back"
                 return  # Back to Settings Menu
             else:
-                print(f"{RED}Invalid theme number. Please try again.{RESET}") #Inform invalid choice
+                print(f"{RED}Invalid theme number. Please try again.{RESET}")  # Inform invalid choice
         else:
-            print(f"{RED}Invalid input. Please try again.{RESET}") #Tell user needs to put number
+            print(f"{RED}Invalid input. Please try again.{RESET}")  # Tell user needs to put number
+
+
+def set_custom_theme():
+    """Allows the user to define a custom color theme."""
+    global SETTINGS, COLOR_PALETTES
+    print(f"{YELLOW}\n--- Custom Color Theme Configuration ---{RESET}")
+    print(f"{YELLOW}Enter ANSI color codes (e.g., \\033[91m) or 'default' to use default for each color.{RESET}")
+
+    custom_theme = {}
+    for color_name in ["RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN"]:
+        while True:
+            color_code = input(f"Enter color code for {color_name} (or 'default'): ")
+            if color_code.lower() == "default":
+                color_code = COLOR_PALETTES["default"][color_name]
+                break
+            elif re.match(r"^\033\[\d+m$", color_code):  # Regex for valid ANSI code
+                break
+            else:
+                print(f"{RED}Invalid ANSI color code. Please try again or enter 'default'.{RESET}")
+
+        custom_theme[color_name] = color_code
+
+    theme_name = input("Enter a name for your custom theme: ")
+    COLOR_PALETTES[theme_name] = custom_theme  # Add to color palettes
+
+    SETTINGS["color_theme"] = theme_name
+    apply_color_theme(theme_name)
+    save_settings(SETTINGS)  # Save settings
+
+    print(f"{GREEN}Custom theme '{theme_name}' saved and applied.{RESET}")
+
 
 def perform_speed_test():
     """Performs a speed test using speedtest-cli and displays the results."""
@@ -495,10 +577,12 @@ def perform_speed_test():
     except Exception as e:
         print(f"{RED}An unexpected error occurred: {e}, {traceback.format_exc()}")
 
+
 def display_version_info():
     """Displays the version information."""
     print(f"{YELLOW}\n--- Version Information ---{RESET}")
     print(f"  Pinger Version: {VERSION}{RESET}\n")
+
 
 def resolve_hostname():
     """Prompts the user for a hostname and attempts to resolve it to an IP address."""
@@ -508,6 +592,20 @@ def resolve_hostname():
         print(f"{GREEN}Hostname '{hostname}' resolves to: {ip_address}{RESET}")
     except socket.gaierror:
         print(f"{RED}Could not resolve hostname '{hostname}'.{RESET}")
+
+def analyze_http_headers(hostname):
+    """Retrieves and analyzes HTTP headers from a given hostname."""
+    try:
+        response = requests.get(f"http://{hostname}", timeout=5, allow_redirects=True)
+        headers = response.headers
+        print(f"{GREEN}\n--- HTTP Headers for {hostname} ---{RESET}")
+        for key, value in headers.items():
+            print(f"  {key}: {value}")
+        print(f"  Status Code: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"{RED}Failed to retrieve HTTP headers for {hostname}: {e}{RESET}")
+
+
 
 def main():
     """Main function to handle menu and ping operations."""
@@ -529,6 +627,9 @@ def main():
                 # Display certificate information
                 cert = get_certificate_info(server)
                 if cert:
+                    cert_name = get_certificate_name(cert)
+                    print(f"    {GREEN}Certificate Name: {cert_name}{RESET}")
+
                     lifetime = calculate_certificate_lifetime(cert)
                     if lifetime:
                         print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
@@ -550,6 +651,9 @@ def main():
             # Display certificate information
             cert = get_certificate_info(hostname)
             if cert:
+                cert_name = get_certificate_name(cert)
+                print(f"    {GREEN}Certificate Name: {cert_name}{RESET}")
+
                 lifetime = calculate_certificate_lifetime(cert)
                 if lifetime:
                     print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
@@ -557,6 +661,7 @@ def main():
                     print(f"    {YELLOW}Could not determine certificate lifetime.{RESET}")
             else:
                 print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
+
 
         elif choice == "3":  # Randomly Ping a Server
             random_ping()
@@ -575,15 +680,19 @@ def main():
             elif settings_choice == "4":  # Run Wifi test
                 perform_speed_test()  # Run Speedtest
             elif settings_choice == "5":  # show version
-                display_version_info() #Shows versions
-            elif settings_choice == "6": #resolve
+                display_version_info()  # Shows versions
+            elif settings_choice == "6":  # resolve
                 resolve_hostname()
-            elif settings_choice == "7":  # Back to main menu
+            elif settings_choice == "7": # Analyze Headers
+                hostname = input("Enter hostname to analyze HTTP headers: ")
+                analyze_http_headers(hostname)
+            elif settings_choice == "8":  # Back to main menu
                 pass  # Just return to the main loop
 
         elif choice == "6":  # Exit
             print("Exiting Random Pinger.")
             sys.exit(0)
+
 
 if __name__ == "__main__":
     """
