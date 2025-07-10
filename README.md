@@ -115,3 +115,7 @@ The settings menu allows you to:
 ## License
 
 This project is licensed under the [Apache2.0 ](LICENSE) - see the `LICENSE` file for details.
+yeah bye 
+
+https://github.com/user-attachments/assets/f9c28e97-84f5-4a41-b690-2c7beb57a8ef
+
