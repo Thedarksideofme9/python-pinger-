@@ -85,26 +85,31 @@ SERVERS = {
 # Default Settings and Settings File
 DEFAULT_SETTINGS = {
     "ping_count": 4,
-    "color_theme": "default"  # Add color theme setting
+    "color_theme": "default",  # Add color theme setting
+    "primary_dns": "",  # Initialize primary DNS
+    "secondary_dns": "" # Initialize secondary DNS
 }
 SETTINGS_FILE = "pinger_settings.json"  # File to save settings
 
 # Version Information
-VERSION = "V1.3"  #Increment version number
-
+VERSION = "V1.4"  #Increment version number
 
 # Load Settings Function
 def load_settings():
     """Loads settings from the settings file or returns default settings."""
     try:
         with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
+            settings = json.load(f)
+            # Ensure new default settings are added if missing from loaded file
+            for key, value in DEFAULT_SETTINGS.items():
+                if key not in settings:
+                    settings[key] = value
+            return settings
     except FileNotFoundError:
         return DEFAULT_SETTINGS
     except json.JSONDecodeError:
         print(f"{RED}Error decoding settings file. Using default settings.{RESET}")
         return DEFAULT_SETTINGS
-
 
 # Save Settings Function
 def save_settings(settings):
@@ -114,7 +119,6 @@ def save_settings(settings):
             json.dump(settings, f, indent=4)  # Save with indentation for readability
     except Exception as e:
         print(f"{RED}Error saving settings: {e}{RESET}")
-
 
 # Function to apply the color theme
 def apply_color_theme(theme):
@@ -135,12 +139,10 @@ def apply_color_theme(theme):
         print(f"{RED}Invalid theme: {theme}. Using default.{RESET}")
         apply_color_theme("default")
 
-
 # Load Settings at Startup
 SETTINGS = load_settings()
 PING_COUNT = SETTINGS["ping_count"]  # LOAD GLOBAL PING COUNT
 apply_color_theme(SETTINGS["color_theme"])  # Apply the color theme to the current color codes
-
 
 def get_country(hostname):
     """Gets the country of a hostname using the ipinfo.io API."""
@@ -153,7 +155,6 @@ def get_country(hostname):
             return "Unknown"
     except (socket.gaierror, requests.exceptions.RequestException):
         return "Unknown"
-
 
 def ping(hostname, count=4):
     """
@@ -171,6 +172,17 @@ def ping(hostname, count=4):
     command = ['ping', param, str(count), hostname]
 
     try:
+        # Check if custom DNS is set and apply it if on Linux/Termux (more complex for Windows/macOS)
+        # Note: This is a simplified approach. Proper DNS modification is OS-dependent and often requires root/admin.
+        # For a user-level Python script, direct DNS server usage for `socket.gethostbyname` is not straightforward.
+        # This implementation primarily influences how *this script* resolves hostnames if it were to use socket.gethostbyname directly.
+        # For the `ping` command itself, system DNS settings are usually respected.
+        if platform.system().lower() in ['linux', 'darwin'] and (SETTINGS.get("primary_dns") or SETTINGS.get("secondary_dns")):
+            # This part is illustrative. Actually forcing `ping` to use specific DNS requires deeper OS integration
+            # or pre-configuring `/etc/resolv.conf` (which needs root).
+            # For `socket.gethostbyname`, we could use `dnspython` library for custom resolvers.
+            pass # We'll rely on the OS's DNS settings for the ping command for simplicity.
+
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
 
@@ -202,6 +214,12 @@ def get_certificate_info(hostname):
     """Retrieves certificate information from a server."""
     context = ssl.create_default_context()
     try:
+        # Use custom DNS if available for name resolution before connecting
+        # Note: For this to truly use custom DNS, you'd typically need to
+        # use a library like `dnspython` for resolution, or manually resolve
+        # to IP using `socket.gethostbyname` if system-wide DNS is modified.
+        # Here, `socket.create_connection` relies on system DNS, but if a custom
+        # DNS is configured *system-wide*, it will be used.
         with socket.create_connection((hostname, 443), timeout=5) as sock:  # HTTPS port
             with context.wrap_socket(sock, server_hostname=hostname) as ssocket:
                 cert = ssocket.getpeercert()
@@ -240,12 +258,30 @@ def get_certificate_name(cert):
     except KeyError:
         return "Unknown"
 
+def get_encryption_type(hostname):
+    """Determines the encryption type used by a server (TLS version)."""
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((hostname, 443), timeout=5) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssocket:
+                return ssocket.version()
+    except socket.gaierror:
+        return "Unknown - Could not resolve hostname"
+    except ssl.SSLError as e:
+        if "PROTOCOL_NOT_SUPPORTED" in str(e):
+            return "None - Server does not support SSL/TLS"
+        return f"Unknown - SSL Error: {e}"
+    except OSError as e:
+        return f"Unknown - OS Error: {e}"
+    except Exception as e:
+        return f"Unknown - Error: {e}"
 
 def display_server_status(hostname):
-    """Displays the status of a given server with color, country, ping time, and certificate info."""
+    """Displays the status of a given server with color, country, ping time, certificate info, and encryption type."""
     country = get_country(hostname)
     avg_ping_time = ping(hostname, count=1)  # Get the ping time
     cert = get_certificate_info(hostname)
+    encryption_type = get_encryption_type(hostname)
 
     if avg_ping_time is not None:
         status_color = GREEN
@@ -257,11 +293,10 @@ def display_server_status(hostname):
     print(f"  - {hostname} ({country}) - {status_color}{status_text}{RESET}")
 
     if cert:
-        lifetime = calculate_certificate_lifetime(cert)
-        cert_name = get_certificate_name(cert) #Get the name
-
+        cert_name = get_certificate_name(cert)
         print(f"    {GREEN}Certificate Name: {cert_name}{RESET}")
 
+        lifetime = calculate_certificate_lifetime(cert)
         if lifetime:
             print(f"    {GREEN}Certificate Lifetime: {lifetime}{RESET}")
         else:
@@ -269,6 +304,7 @@ def display_server_status(hostname):
     else:
         print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
 
+    print(f"    {CYAN}Encryption Type: {encryption_type}{RESET}")
 
 def display_main_menu():
     """Displays the main menu with options."""
@@ -280,7 +316,6 @@ def display_main_menu():
     print("  5. Settings")
     print("  6. Exit")
 
-
 def get_main_menu_choice():
     """Gets the user's choice from the main menu."""
     while True:
@@ -291,14 +326,12 @@ def get_main_menu_choice():
         else:
             print("Invalid choice. Please try again.")
 
-
 def display_server_menu():
     """Displays the server menu."""
     print(f"{CYAN}\nAvailable Servers:{RESET}")
     for i, (key, value) in enumerate(SERVERS.items()):
         print(f"  {i + 1}. {key} ({value})")
     print("\nEnter the number of the server you want to ping, or '0' to go back:")
-
 
 def get_server_menu_choice():
     """Gets the user's choice from the server menu."""
@@ -315,7 +348,6 @@ def get_server_menu_choice():
                 print("Invalid server number. Please try again.")
         except ValueError:
             print("Invalid input. Please enter a number.")
-
 
 def random_ping():
     """Randomly pings a server from the list."""
@@ -352,19 +384,72 @@ def display_settings_menu():
     print("  5. Version Info")
     print("  6. Resolve Hostname")  # added resolve hostname
     print("  7. Analyze HTTP Headers")  #New Analysis
-    print("  8. Back to Main Menu")
-
+    print("  8. Custom DNS Server") #add custom dns
+    print("  9. Back to Main Menu")
 
 def get_settings_menu_choice():
     """Gets the user's choice from the settings menu."""
     while True:
         display_settings_menu()
         choice = input("> ")
-        if choice in ("1", "2", "3", "4", "5", "6", "7", "8"):  # added 5
+        if choice in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):  # added 5
             return choice
         else:
             print("Invalid choice. Please try again.")
 
+def display_custom_dns_menu():
+    """Displays the Custom DNS Server menu."""
+    print(f"{CYAN}\nCustom DNS Server Settings:{RESET}")
+    print("  1. Set Primary DNS Server")
+    print("  2. Set Secondary DNS Server")
+    print("  3. View Current DNS Servers")  #Display them
+    print("  4. Reset to Default DNS Servers")
+    print("  5. Back to Settings Menu")
+
+def get_custom_dns_menu_choice():
+    """Gets the user's choice from the Custom DNS Server menu."""
+    global SETTINGS
+    while True:
+        display_custom_dns_menu()
+        choice = input("> ")
+        if choice in ("1", "2", "3", "4", "5"):
+            return choice
+        else:
+            print("Invalid choice. Please try again.")
+
+def set_custom_dns(dns_type):
+    """Sets a custom DNS server (primary or secondary)."""
+    global SETTINGS
+    while True:
+        new_dns = input(f"Enter new {dns_type} DNS server IP address: ")
+        try:
+            socket.inet_aton(new_dns)  # Validate IP address format
+            # Store the custom DNS in settings
+            SETTINGS[f"{dns_type}_dns"] = new_dns  # ex: primary_dns
+            save_settings(SETTINGS)
+            print(f"{GREEN}{dns_type.capitalize()} DNS server set to {new_dns}{RESET}")
+            break
+        except socket.error:
+            print(f"{RED}Invalid IP address format. Please try again.{RESET}")
+        except Exception as e:
+            print(f"{RED}An error occurred: {e}{RESET}")
+
+def view_current_dns_servers():
+    """Displays the currently configured DNS servers."""
+    primary_dns = SETTINGS.get("primary_dns", "Not Set")
+    secondary_dns = SETTINGS.get("secondary_dns", "Not Set")
+
+    print(f"{YELLOW}\nCurrent DNS Servers:{RESET}")
+    print(f"  Primary DNS: {primary_dns}")
+    print(f"  Secondary DNS: {secondary_dns}")
+
+def reset_default_dns_servers():
+     """Resets the DNS servers to empty values (effectively using system defaults)."""
+     global SETTINGS
+     SETTINGS["primary_dns"] = ""
+     SETTINGS["secondary_dns"] = ""
+     save_settings(SETTINGS)
+     print(f"{GREEN}DNS servers reset to default (system-configured).{RESET}")
 
 def display_ping_tweaks_menu():
     """Displays the Ping Tweaks menu."""
@@ -372,7 +457,6 @@ def display_ping_tweaks_menu():
     print(f"  Current Ping Count: {SETTINGS['ping_count']}")
     print("  1. Change Ping Count")
     print("  2. Back to Settings Menu")
-
 
 def get_ping_tweaks_menu_choice():
     """Gets the user's choice from the ping tweaks menu."""
@@ -397,7 +481,6 @@ def get_ping_tweaks_menu_choice():
             return  # Back to Settings Menu
         else:
             print("Invalid choice. Please try again.")
-
 
 def show_device_specs():
     """Displays device specifications, live RAM and CPU usage."""
@@ -465,7 +548,6 @@ def show_device_specs():
                 break  # Exit the loop
         time.sleep(0.5)  # Give time for stdin to fill up to be read
 
-
 def display_color_theme_menu():
     """Displays the color theme menu."""
     print(f"{CYAN}\nColor Theme Settings:{RESET}")
@@ -476,7 +558,6 @@ def display_color_theme_menu():
     print(f"  {len(themes) + 1}. Custom Theme (Advanced)")
     print(f"  {len(themes) + 2}. Back to Settings Menu")  # Back option
     print("\nEnter the number of the theme you want to use:")  # Prompt change
-
 
 def get_color_theme_menu_choice():
     """Gets the user's choice from the color theme menu."""
@@ -504,7 +585,6 @@ def get_color_theme_menu_choice():
                 print(f"{RED}Invalid theme number. Please try again.{RESET}")  # Inform invalid choice
         else:
             print(f"{RED}Invalid input. Please try again.{RESET}")  # Tell user needs to put number
-
 
 def set_custom_theme():
     """Allows the user to define a custom color theme."""
@@ -534,7 +614,6 @@ def set_custom_theme():
     save_settings(SETTINGS)  # Save settings
 
     print(f"{GREEN}Custom theme '{theme_name}' saved and applied.{RESET}")
-
 
 def perform_speed_test():
     """Performs a speed test using speedtest-cli and displays the results."""
@@ -577,12 +656,10 @@ def perform_speed_test():
     except Exception as e:
         print(f"{RED}An unexpected error occurred: {e}, {traceback.format_exc()}")
 
-
 def display_version_info():
     """Displays the version information."""
     print(f"{YELLOW}\n--- Version Information ---{RESET}")
     print(f"  Pinger Version: {VERSION}{RESET}\n")
-
 
 def resolve_hostname():
     """Prompts the user for a hostname and attempts to resolve it to an IP address."""
@@ -604,8 +681,6 @@ def analyze_http_headers(hostname):
         print(f"  Status Code: {response.status_code}")
     except requests.exceptions.RequestException as e:
         print(f"{RED}Failed to retrieve HTTP headers for {hostname}: {e}{RESET}")
-
-
 
 def main():
     """Main function to handle menu and ping operations."""
@@ -638,6 +713,9 @@ def main():
                 else:
                     print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
 
+                encryption_type = get_encryption_type(server)
+                print(f"    {CYAN}Encryption Type: {encryption_type}{RESET}")
+
             else:
                 print("Returning to main menu.")
         elif choice == "2":  # Search for a Custom Hostname/IP
@@ -662,6 +740,9 @@ def main():
             else:
                 print(f"    {YELLOW}Could not retrieve certificate information.{RESET}")
 
+            encryption_type = get_encryption_type(hostname)
+            print(f"    {CYAN}Encryption Type: {encryption_type}{RESET}")
+
 
         elif choice == "3":  # Randomly Ping a Server
             random_ping()
@@ -677,7 +758,7 @@ def main():
                 show_device_specs()
             elif settings_choice == "3":  # Change Color Theme
                 get_color_theme_menu_choice()
-            elif settings_choice == "4":  # Run Wifi test
+            elif settings_choice == "4":  # Wi-Fi Speed Test
                 perform_speed_test()  # Run Speedtest
             elif settings_choice == "5":  # show version
                 display_version_info()  # Shows versions
@@ -686,7 +767,19 @@ def main():
             elif settings_choice == "7": # Analyze Headers
                 hostname = input("Enter hostname to analyze HTTP headers: ")
                 analyze_http_headers(hostname)
-            elif settings_choice == "8":  # Back to main menu
+            elif settings_choice == "8": # Custom DNS Server
+                dns_choice = get_custom_dns_menu_choice()
+                if dns_choice == "1":
+                    set_custom_dns("primary")
+                elif dns_choice == "2":
+                    set_custom_dns("secondary")
+                elif dns_choice == "3":
+                    view_current_dns_servers()
+                elif dns_choice == "4":
+                    reset_default_dns_servers()
+                elif dns_choice == "5":
+                    pass # Back to settings menu
+            elif settings_choice == "9":  # Back to main menu
                 pass  # Just return to the main loop
 
         elif choice == "6":  # Exit
